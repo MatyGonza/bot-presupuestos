@@ -12,9 +12,10 @@ const BOARD_PRICE_18MM_COLOR = 105000;
 const BOARD_PRICE_15MM_WHITE = 73000;
 const BOARD_PRICE_3MM = 29176;
 
-// Canto Prices (Price per linear meter)
-const CANTO_PRICE_WHITE = 240; // $12.000 / 50m
-const CANTO_PRICE_COLOR = 700; // $35.000 / 50m
+// Canto Prices (50m Rolls)
+const CANTO_ROLL_SIZE = 50;
+const CANTO_ROLL_PRICE_WHITE = 12000;
+const CANTO_ROLL_PRICE_COLOR = 35000;
 
 const WASTE_FACTOR_MULTIPLIER = 1.20; // +20% desperdicio (cortes, vetas, descartes)
 
@@ -147,7 +148,12 @@ function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area1
         shelfCount = 1;
     }
 
-    const doorCount = getDoorCount(req.dimensions.width);
+    let doorCount = 0;
+    if (req.module === 'cajonera') {
+        doorCount = req.drawerCount ?? 3;
+    } else {
+        doorCount = getDoorCount(req.dimensions.width);
+    }
 
     // Fondo trasero exterior
     area3mm += (h * w);
@@ -227,13 +233,20 @@ function calculateCanto(req: QuoteRequest, shelfCount: number, doorCount: number
     // El perímetro total de las puertas es aproximadamente el perímetro del frente 
     // más los laterales internos de las puertas (H * 2*(doorCount-1)).
     const frontPerimeter = 2 * (w + h);
-    const internalDoorEdges = 2 * h * (doorCount - 1);
+    let internalFrontEdges = 0;
+    if (req.module === 'cajonera') {
+        // En cajoneras, los frentes están apilados: sumamos bordes horizontales internos
+        internalFrontEdges = 2 * w * (doorCount - 1);
+    } else {
+        // En el resto, las puertas son verticales: sumamos bordes verticales internos
+        internalFrontEdges = 2 * h * (doorCount - 1);
+    }
     
     if (req.frontMaterial === 'color') {
-        color = frontPerimeter + internalDoorEdges;
+        color = frontPerimeter + internalFrontEdges;
     } else {
         // Si el frente es blanco, el canto del frente es blanco
-        white += (frontPerimeter + internalDoorEdges);
+        white += (frontPerimeter + internalFrontEdges);
     }
 
     // 2. Canto Blanco: Bordes de estructura y estantes
@@ -328,13 +341,17 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
     const boards18mmColor = Math.ceil((sum18mmColor * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_18MM_COLOR);
     const boards15mmWhite = Math.ceil((sum15mmWhite * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_15MM_WHITE);
     const boards3mm = Math.ceil((sum3mm * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_3MM);
+    
+    // Tapacantos por rollo (Sin desperdicio extra, solo redondeo al alza)
+    const totalCantoWhiteRolls = Math.ceil(totalCantoWhiteMeters / CANTO_ROLL_SIZE);
+    const totalCantoColorRolls = Math.ceil(totalCantoColorMeters / CANTO_ROLL_SIZE);
 
     const cost18mmWhite = boards18mmWhite * BOARD_PRICE_18MM_WHITE;
     const cost18mmColor = boards18mmColor * BOARD_PRICE_18MM_COLOR;
     const cost15mmWhite = boards15mmWhite * BOARD_PRICE_15MM_WHITE;
     const cost3mm = boards3mm * BOARD_PRICE_3MM;
 
-    const totalCantoCost = (totalCantoWhiteMeters * CANTO_PRICE_WHITE) + (totalCantoColorMeters * CANTO_PRICE_COLOR);
+    const totalCantoCost = (totalCantoWhiteRolls * CANTO_ROLL_PRICE_WHITE) + (totalCantoColorRolls * CANTO_ROLL_PRICE_COLOR);
 
     const totalMaterialCost = Math.round(cost18mmWhite + cost18mmColor + cost15mmWhite + cost3mm);
 
@@ -354,6 +371,8 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
         totalHardwareCost: Math.round(totalHardwareCost),
         totalCantoWhiteMeters,
         totalCantoColorMeters,
+        totalCantoWhiteRolls,
+        totalCantoColorRolls,
         totalCantoCost: Math.round(totalCantoCost),
         grandTotal: Math.round(totalMaterialCost + totalHardwareCost + totalCantoCost)
     };

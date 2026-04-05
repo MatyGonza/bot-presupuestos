@@ -48,7 +48,12 @@ const storage = supabaseAdapter<SessionData>({
 });
 
 bot.use(session({
-  initial: (): SessionData => ({ modules: [] }),
+  initial: (): SessionData => ({ 
+    modules: [],
+    defaultFrontMaterial: "blanco",
+    defaultHardwareTier: "premium",
+    defaultInternalThickness: "15mm"
+  }),
   storage,
 }));
 
@@ -108,7 +113,8 @@ function formatModuleDetail(mod: QuoteResult): string {
     extras.push(`${mod.request.shelfCount} estante(s)`);
   }
   if (mod.doorCount > 0) {
-    extras.push(`${mod.doorCount} puerta(s)`);
+    const label = mod.module === 'cajonera' ? 'frentes de cajón' : 'puerta(s)';
+    extras.push(`${mod.doorCount} ${label}`);
   }
 
   const extrasStr = extras.length > 0 ? `\n    └ Componentes: ${extras.join(", ")}` : "";
@@ -135,6 +141,7 @@ function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResul
   const formatter = new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
+    maximumFractionDigits: 0
   });
 
   const cartTotals = calculateCartTotals(sessionData.modules);
@@ -144,7 +151,7 @@ function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResul
     if (lastAddedBatch.length === 1) {
       const mod = lastAddedBatch[0];
       const detailStr = formatModuleDetail(mod);
-      reply += `✅ *Módulo Agregado:* ${mod.module.replace('_', ' ').toUpperCase()} (Herrajes: ${formatter.format(mod.hardwareCost)})${detailStr}\n\n`;
+      reply += `✅ *Módulo Agregado:* ${mod.module.replace('_', ' ').toUpperCase()}\n     (Herrajes: ${formatter.format(mod.hardwareCost)})${detailStr}\n\n`;
     } else {
       reply += `✅ *¡Lote de ${lastAddedBatch.length} Módulos Agregados!*\n\n`;
     }
@@ -170,9 +177,11 @@ function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResul
     if (mat.boards3mm > 0) reply += `  └ MDF 3mm Fondo: ${mat.boards3mm} un. -> ${formatter.format(mat.cost3mm)}\n`;
     
     // Tapacantos
-    if (cartTotals.totalCantoWhiteMeters > 0 || cartTotals.totalCantoColorMeters > 0) {
-      reply += `  └ Tapacanto Blanco: ${cartTotals.totalCantoWhiteMeters.toFixed(1)}m\n`;
-      reply += `  └ Tapacanto Color: ${cartTotals.totalCantoColorMeters.toFixed(1)}m\n`;
+    if (cartTotals.totalCantoWhiteMeters > 0) {
+      reply += `  └ Canto Blanco: ${cartTotals.totalCantoWhiteMeters.toFixed(1)}m (${cartTotals.totalCantoWhiteRolls} rollo/s)\n`;
+    }
+    if (cartTotals.totalCantoColorMeters > 0) {
+      reply += `  └ Canto Color: ${cartTotals.totalCantoColorMeters.toFixed(1)}m (${cartTotals.totalCantoColorRolls} rollo/s)\n`;
     }
 
     reply += `\n---\n`;
@@ -522,7 +531,12 @@ bot.on("message:text", async (ctx) => {
       return;
     }
 
-    const quoteResults = await Promise.all(quoteRequestsArray.map(q => calculateQuote(q)));
+    const quoteResults = await Promise.all(quoteRequestsArray.map(q => calculateQuote({
+      ...q,
+      frontMaterial: q.frontMaterial || ctx.session.defaultFrontMaterial,
+      hardwareTier: q.hardwareTier || ctx.session.defaultHardwareTier,
+      internalThickness: q.internalThickness || ctx.session.defaultInternalThickness,
+    })));
     ctx.session.modules.push(...quoteResults);
     log.info("QUOTE", `${quoteResults.length} módulo(s) agregados para ${ctx.from!.id}`);
 
@@ -568,7 +582,12 @@ bot.on("message:voice", async (ctx) => {
       return;
     }
 
-    const quoteResults = await Promise.all(quoteRequestsArray.map(q => calculateQuote(q)));
+    const quoteResults = await Promise.all(quoteRequestsArray.map(q => calculateQuote({
+      ...q,
+      frontMaterial: q.frontMaterial || ctx.session.defaultFrontMaterial,
+      hardwareTier: q.hardwareTier || ctx.session.defaultHardwareTier,
+      internalThickness: q.internalThickness || ctx.session.defaultInternalThickness,
+    })));
     ctx.session.modules.push(...quoteResults);
     log.info("QUOTE", `${quoteResults.length} módulo(s) agregados para ${ctx.from!.id}`);
 

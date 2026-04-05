@@ -73,6 +73,8 @@ export interface CartTotals {
     totalHardwareCost: number;
     totalCantoWhiteMeters: number;
     totalCantoColorMeters: number;
+    totalCantoWhiteRolls: number;
+    totalCantoColorRolls: number;
     totalCantoCost: number;
     grandTotal: number;
 }

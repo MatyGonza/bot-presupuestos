@@ -21,3 +21,10 @@
 
 ### jest
 - Follow TDD: write tests before implementation in `sdd-apply`.
+
+### furniture-pricing
+- Edge banding (canto) priced by **50m rolls** (White: $12k, Color: $35k).
+- Rolls calculated as `Math.ceil(totalMeters / 50)` (No waste factor applied to canto).
+- Default internal boards thickness: **15mm** (can be changed to 18mm via `/config`).
+- Default: 1 shelf for `bajo_mesada` and `alacena`.
+- Door count logic: 1 if W <= 500mm, 2 if W <= 1500mm, 3 if W > 1500mm.
