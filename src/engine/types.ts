@@ -49,6 +49,10 @@ export interface QuoteResult {
     hardwareCost: number;
     hardwareBreakdown?: string[];
     fondosBreakdown?: string[];
+    // Nuevas métricas
+    cantoMetersWhite: number;
+    cantoMetersColor: number;
+    doorCount: number;
 }
 
 export interface MaterialRequirements {
@@ -67,5 +71,8 @@ export interface CartTotals {
     modules: QuoteResult[];
     materials: MaterialRequirements;
     totalHardwareCost: number;
+    totalCantoWhiteMeters: number;
+    totalCantoColorMeters: number;
+    totalCantoCost: number;
     grandTotal: number;
 }

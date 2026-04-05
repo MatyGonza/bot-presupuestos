@@ -102,8 +102,16 @@ function formatModuleDetail(mod: QuoteResult): string {
   const dim = mod.request.dimensions;
   const extras = [];
   if (mod.request.drawerCount) extras.push(`${mod.request.drawerCount} cajones`);
-  if (mod.request.shelfCount) extras.push(`${mod.request.shelfCount} estantes`);
-  const extrasStr = extras.length > 0 ? `\n    └ Config: ${extras.join(", ")}` : "";
+  
+  // Detalle de Estantes y Puertas
+  if (mod.request.shelfCount && mod.request.shelfCount > 0) {
+    extras.push(`${mod.request.shelfCount} estante(s)`);
+  }
+  if (mod.doorCount > 0) {
+    extras.push(`${mod.doorCount} puerta(s)`);
+  }
+
+  const extrasStr = extras.length > 0 ? `\n    └ Componentes: ${extras.join(", ")}` : "";
 
   const frontType = mod.request.frontMaterial === 'color' 
     ? "MDF 18mm *Color*" 
@@ -113,10 +121,14 @@ function formatModuleDetail(mod: QuoteResult): string {
   const hardwareStr = mod.hardwareBreakdown && mod.hardwareBreakdown.length > 0 
     ? `\n    └ Herrajes: ${mod.hardwareBreakdown.join(" | ")}` 
     : "";
+  
+  const cantoStr = `\n    └ Tapacanto: ${mod.cantoMetersWhite.toFixed(2)}m (B) / ${mod.cantoMetersColor.toFixed(2)}m (C)`;
+
   const fondoStr = mod.fondosBreakdown && mod.fondosBreakdown.length > 0
     ? `\n    └ Fondos: ${mod.fondosBreakdown.join(" + ")}`
     : "";
-  return `\n    └ Medidas: ${dim.width}x${dim.height}x${dim.depth} mm${dimType}${extrasStr}\n    └ Frentes: ${frontType}${hardwareStr}${fondoStr}`;
+    
+  return `\n    └ Medidas: ${dim.width}x${dim.height}x${dim.depth} mm${dimType}${extrasStr}${cantoStr}${hardwareStr}${fondoStr}`;
 }
 
 function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResult[] | null): string {
@@ -151,14 +163,21 @@ function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResul
 
   if (sessionData.modules.length > 0) {
     const mat = cartTotals.materials;
-    reply += `\n📦 *MATERIALES REQUERIDOS (PLACAS ENTERAS)* 📦\n`;
+    reply += `\n📦 *MATERIALES REQUERIDOS* 📦\n`;
     if (mat.boards18mmWhite > 0) reply += `  └ MDF 18mm Blanco: ${mat.boards18mmWhite} un. -> ${formatter.format(mat.cost18mmWhite)}\n`;
     if (mat.boards18mmColor > 0) reply += `  └ MDF 18mm Color: ${mat.boards18mmColor} un. -> ${formatter.format(mat.cost18mmColor)}\n`;
     if (mat.boards15mmWhite > 0) reply += `  └ MDF 15mm Blanco (Estructural): ${mat.boards15mmWhite} un. -> ${formatter.format(mat.cost15mmWhite)}\n`;
     if (mat.boards3mm > 0) reply += `  └ MDF 3mm Fondo: ${mat.boards3mm} un. -> ${formatter.format(mat.cost3mm)}\n`;
     
+    // Tapacantos
+    if (cartTotals.totalCantoWhiteMeters > 0 || cartTotals.totalCantoColorMeters > 0) {
+      reply += `  └ Tapacanto Blanco: ${cartTotals.totalCantoWhiteMeters.toFixed(1)}m\n`;
+      reply += `  └ Tapacanto Color: ${cartTotals.totalCantoColorMeters.toFixed(1)}m\n`;
+    }
+
     reply += `\n---\n`;
     reply += `💰 *Costo Total Herrajes:* ${formatter.format(cartTotals.totalHardwareCost)}\n`;
+    reply += `💰 *Costo Total Tapacantos:* ${formatter.format(cartTotals.totalCantoCost)}\n`;
     reply += `💰 *Costo Total Placas:* ${formatter.format(mat.totalMaterialCost)}\n`;
     reply += `🚀 *GRAN TOTAL ACUMULADO:* ${formatter.format(cartTotals.grandTotal)}\n\n`;
   }
