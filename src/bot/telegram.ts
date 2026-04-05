@@ -265,6 +265,16 @@ bot.command("start", async (ctx) => {
   ctx.session.defaultHardwareTier = "premium";
   ctx.session.defaultInternalThickness = "15mm";
   ctx.reply("¡Hola! Soy tu bot de presupuestos de muebles. Mandame un audio o texto para cotizar, o usá /config para cambiar las opciones del proyecto.");
+  const userId = ctx.from!.id;
+  const isAllowed = await isUserAllowed(userId);
+
+  if (isAllowed || userId === adminId) {
+    return sendWelcomeTutorial(ctx);
+  }
+
+  await ctx.reply("👋 ¡Hola! Soy el asistente de presupuestos pro.\n\n" +
+    "Para empezar a usarme, por favor ingresá tu código de invitación con el comando:\n" +
+    "`/activar CODIGO` (ejemplo: `/activar MUEBLES2024`)", { parse_mode: "Markdown" });
 });
 
 bot.command("activar", async (ctx) => {
@@ -347,11 +357,11 @@ async function sendWelcomeTutorial(ctx: MyContext) {
     `Soy tu bot de presupuestos. Me podés hablar como a un compañero: mandame **TEXTO** o **AUDIOS** con lo que necesitás.`);
 
   await ctx.reply(`📚 **¿Cómo pedir un presupuesto?**\n\n` +
-    `Podés decir algo como:\n` +
-    `• *"Cotizame un bajo mesada de 1.20 x 0.80"* 📏\n` +
-    `• *"Necesito una alacena con 3 estantes de 0.60 x 0.60"* 🏗️\n` +
-    `• *"Haceme un placard de 2.40 x 2.20 x 0.60 de profundidad"* 👕\n\n` +
-    `**Pro-Tip**: Podés pedir varios muebles en un solo audio!`);
+    `Podés decir algo bien natural, como:\n` +
+    `• *"Cotizame un bajo mesada de un metro veinte por ochenta"* 📏\n` +
+    `• *"Necesito una alacena de sesenta por sesenta con dos estantes"* 🏗️\n` +
+    `• *"Haceme un placard de dos metros cuarenta por dos veinte y sesenta de fondo"* 👕\n\n` +
+    `**Pro-Tip**: ¡No hace falta que digas "punto", decilo como se lo dirías a un cliente!`);
 
   await ctx.reply(`⚙️ **Comandos útiles:**\n` +
     `/historial - Ver tus presupuestos anteriores.\n` +
