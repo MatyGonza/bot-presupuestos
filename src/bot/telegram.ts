@@ -193,8 +193,11 @@ async function handleInviteRegistration(ctx: MyContext, code: string) {
       username: ctx.from!.username,
       code: safeCode
     });
-    log.info("INVITE", `Nuevo usuario registrado: ${ctx.from!.id} (@${ctx.from!.username || 'sin_user'}) con código ${safeCode}`);
-    await ctx.reply(`✅ ¡Bienvenido *${ctx.from!.first_name}*! Has sido registrado exitosamente.\nAhora ya podés usar el bot mandando audios o textos.`, { parse_mode: "Markdown" });
+
+    log.info("AUTH", `Nuevo usuario registrado: ${ctx.from!.id} (${ctx.from!.first_name}) con código: ${safeCode}`);
+    
+    // Onboarding de bienvenida profesional
+    await sendWelcomeTutorial(ctx);
   } catch (error: any) {
     // NUNCA exponer detalles internos al usuario — solo loggear
     log.error("INVITE", `Error registrando usuario ${ctx.from?.id}`, error);
@@ -333,6 +336,32 @@ bot.command("historial", async (ctx) => {
   }
 });
 
+
+/**
+ * Onboarding para nuevos usuarios y comando /ayuda
+ */
+async function sendWelcomeTutorial(ctx: MyContext) {
+  const name = ctx.from?.first_name || "Colega";
+  
+  await ctx.reply(`👋 ¡Hola ${name}! Bienvenido al asistente pro de carpintería.\n\n` +
+    `Soy tu bot de presupuestos. Me podés hablar como a un compañero: mandame **TEXTO** o **AUDIOS** con lo que necesitás.`);
+
+  await ctx.reply(`📚 **¿Cómo pedir un presupuesto?**\n\n` +
+    `Podés decir algo como:\n` +
+    `• *"Cotizame un bajo mesada de 1.20 x 0.80"* 📏\n` +
+    `• *"Necesito una alacena con 3 estantes de 0.60 x 0.60"* 🏗️\n` +
+    `• *"Haceme un placard de 2.40 x 2.20 x 0.60 de profundidad"* 👕\n\n` +
+    `**Pro-Tip**: Podés pedir varios muebles en un solo audio!`);
+
+  await ctx.reply(`⚙️ **Comandos útiles:**\n` +
+    `/historial - Ver tus presupuestos anteriores.\n` +
+    `/config - Cambiar materiales por defecto.\n` +
+    `/ayuda - Ver este tutorial de nuevo.`);
+}
+
+bot.command("ayuda", async (ctx) => {
+  await sendWelcomeTutorial(ctx);
+});
 
 // ── Comandos de Admin ─────────────────────────────────────────────────────────
 
