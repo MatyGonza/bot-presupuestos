@@ -117,7 +117,7 @@ function formatModuleDetail(mod: QuoteResult): string {
     extras.push(`${mod.doorCount} ${label}`);
   }
 
-  const extrasStr = extras.length > 0 ? `\n    └ Componentes: ${extras.join(", ")}` : "";
+  const extrasStr = extras.length > 0 ? `\n    🛠 *Componentes:* ${extras.join(", ")}` : "";
 
   const frontType = mod.request.frontMaterial === 'color' 
     ? "MDF 18mm *Color*" 
@@ -165,7 +165,7 @@ function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResul
 
   sessionData.modules.forEach((mod, index) => {
     const detailStr = formatModuleDetail(mod);
-    reply += `🔹 *${index + 1}.* ${mod.module.replace('_', ' ').toUpperCase()} - Herrajes: ${formatter.format(mod.hardwareCost)}${detailStr}\n`;
+    reply += `🔹 *${index + 1}.* ${mod.module.replace('_', ' ').toUpperCase()} - Herrajes: ${formatter.format(mod.hardwareCost)}${detailStr}\n\n`;
   });
 
   if (sessionData.modules.length > 0) {
