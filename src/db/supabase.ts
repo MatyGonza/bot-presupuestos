@@ -70,7 +70,7 @@ export async function registerUser(params: {
   name: string;
   username?: string;
   code: string;
-}): Promise<void> {
+}): Promise<string> { // Retorna el nombre para avisar al admin
   // 1. Validar invitación
   const { data: invite, error: inviteErr } = await supabase
     .from("invitations")
@@ -101,6 +101,43 @@ export async function registerUser(params: {
     .from("invitations")
     .update({ used_count: invite.used_count + 1 })
     .eq("id", invite.id);
+
+  return params.username ? `@${params.username}` : params.name;
+}
+
+// ... (Rest of existing code remains same until end)
+
+/**
+ * Obtiene todas las configuraciones del bot (precios).
+ */
+export async function getBotSettings(): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from("bot_settings")
+    .select("key, value");
+
+  if (error) {
+    console.error("Error al leer bot_settings:", error);
+    return {};
+  }
+  
+  const settings: Record<string, number> = {};
+  data?.forEach((row: any) => {
+    settings[row.key] = row.value;
+  });
+  
+  return settings;
+}
+
+/**
+ * Actualiza una configuración específica.
+ */
+export async function updateBotSetting(key: string, value: number): Promise<void> {
+  const { error } = await supabase
+    .from("bot_settings")
+    .update({ value, updated_at: new Date().toISOString() })
+    .eq("key", key);
+
+  if (error) throw error;
 }
 
 // ── Helpers de Invitaciones ───────────────────────────────────────────────────

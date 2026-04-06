@@ -12,9 +12,11 @@ import {
   getQuotesByUser, 
   getQuoteById, 
   createInvitation,
-  getStats
+  getStats,
+  updateBotSetting
 } from "../db/supabase";
 import { authMiddleware } from "./middleware/auth";
+import { refreshPrices } from "../engine/pricing";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -31,6 +33,7 @@ if (!telegramToken) {
 interface SessionData {
   modules: QuoteResult[];
   awaitingClientName?: boolean;
+  awaitingPriceKey?: string; // Para el flujo de /admin_precios
   defaultFrontMaterial?: "blanco" | "color";
   defaultHardwareTier?: "standard" | "premium" | "luxury";
   defaultInternalThickness?: "18mm" | "15mm";
@@ -197,6 +200,31 @@ function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResul
 }
 
 // ── Lógica de Registro e Invitaciones ─────────────────────────────────────────
+// ── Administración de Precios ────────────────────────────────────────────────
+
+const CATEGORIES: Record<string, { label: string, keys: string[] }> = {
+  placas: { label: "📁 Placas", keys: ["board_18mm_white", "board_18mm_color", "board_15mm_white", "board_3mm"] },
+  cantos: { label: "🎞 Tapacantos", keys: ["canto_roll_white", "canto_roll_color"] },
+  herrajes: { label: "⚙️ Herrajes", keys: ["hw_hinge_std", "hw_hinge_pre", "hw_hinge_lux", "hw_slide_std", "hw_slide_pre", "hw_slide_lux", "hw_sliding_std", "hw_sliding_pre", "hw_sliding_lux"] }
+};
+
+const KEY_LABELS: Record<string, string> = {
+  board_18mm_white: "MDF 18mm Blanco",
+  board_18mm_color: "MDF 18mm Color",
+  board_15mm_white: "MDF 15mm Blanco",
+  board_3mm: "MDF 3mm Fondo",
+  canto_roll_white: "Rollo Blanco 50m",
+  canto_roll_color: "Rollo Color 50m",
+  hw_hinge_std: "Bisagras Std (x4)",
+  hw_hinge_pre: "Bisagras Pre (x4)",
+  hw_hinge_lux: "Bisagras Lux (x4)",
+  hw_slide_std: "Guías Económicas (Par)",
+  hw_slide_pre: "Guías Telesc. (Par)",
+  hw_slide_lux: "Guías Ocultas (Par)",
+  hw_sliding_std: "Kit Placard Econ.",
+  hw_sliding_pre: "Kit Placard Alum.",
+  hw_sliding_lux: "Kit Placard Luxury"
+};
 
 async function handleInviteRegistration(ctx: MyContext, code: string) {
   // Sanitizar: solo alfanumérico y guiones bajos, máx 32 chars
@@ -215,7 +243,7 @@ async function handleInviteRegistration(ctx: MyContext, code: string) {
     }
 
     // 2. Intentar registro
-    await registerUser({
+    const registeredName = await registerUser({
       telegramId: ctx.from!.id,
       name: ctx.from!.first_name,
       username: ctx.from!.username,
@@ -224,6 +252,12 @@ async function handleInviteRegistration(ctx: MyContext, code: string) {
 
     log.info("AUTH", `Nuevo usuario registrado: ${ctx.from!.id} (${ctx.from!.first_name}) con código: ${safeCode}`);
     
+    // Notificar al Admin
+    const archChannel = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
+    if (archChannel) {
+      await ctx.api.sendMessage(archChannel, `📢 *Nuevo Usuario:* ${registeredName}\n🆔 ID: ${ctx.from!.id}\n🎟 Código: ${safeCode}`, { parse_mode: "Markdown" }).catch(console.error);
+    }
+
     // Onboarding de bienvenida profesional
     await sendWelcomeTutorial(ctx);
   } catch (error: any) {
@@ -527,6 +561,13 @@ bot.on("message:text", async (ctx) => {
 
     if (quoteRequestsArray.length === 0) {
       log.warn("NLU", "No se encontraron módulos válidos en el texto");
+      
+      // Notificar al Admin
+      const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
+      if (arch) {
+        await ctx.api.sendMessage(arch, `⚠️ *NLU Falló (Texto):* No se detectaron módulos.\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})\n💬 Texto: "${ctx.message.text}"`, { parse_mode: "Markdown" }).catch(console.error);
+      }
+
       await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, "⚠️ No detecté ningún módulo claro. ¿Podés intentar de nuevo con medidas?");
       return;
     }
@@ -546,6 +587,13 @@ bot.on("message:text", async (ctx) => {
     });
   } catch (error) {
     log.error("NLU", `Error procesando texto de ${ctx.from?.id}`, error);
+    
+    // Notificar al Admin sobre error crítico
+    const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
+    if (arch) {
+      await ctx.api.sendMessage(arch, `❌ *Error NLU (Texto):* ${error instanceof Error ? error.message : 'Error desconocido'}\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})`, { parse_mode: "Markdown" }).catch(console.error);
+    }
+    
     await ctx.reply("⚠️ No pude procesar ese mensaje. Intentá de nuevo.");
   }
 });
@@ -578,6 +626,13 @@ bot.on("message:voice", async (ctx) => {
 
     if (quoteRequestsArray.length === 0) {
       log.warn("NLU", "No se encontraron módulos válidos en el audio");
+
+      // Notificar al Admin
+      const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
+      if (arch) {
+        await ctx.api.sendMessage(arch, `⚠️ *NLU Falló (Audio):* No se detectaron módulos.\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})`, { parse_mode: "Markdown" }).catch(console.error);
+      }
+
       await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, "⚠️ No detecté módulos en el audio. Intentá de nuevo.");
       return;
     }
@@ -597,6 +652,13 @@ bot.on("message:voice", async (ctx) => {
     });
   } catch (error) {
     log.error("VOICE", `Error procesando audio de ${ctx.from?.id}`, error);
+
+    // Notificar al Admin
+    const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
+    if (arch) {
+      await ctx.api.sendMessage(arch, `❌ *Error Grave (Audio):* ${error instanceof Error ? error.message : 'Error desconocido'}\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})`, { parse_mode: "Markdown" }).catch(console.error);
+    }
+
     await ctx.reply("⚠️ No pude procesar el audio. Intentá de nuevo.");
   }
 });
@@ -677,6 +739,92 @@ bot.on("callback_query:data", async (ctx, next) => {
   return next();
 });
 
+// ── Administración de Precios (Interactivo) ───────────────────────────────────
+
+bot.command("admin_precios", async (ctx) => {
+  if (ctx.from?.id !== adminId) return;
+  
+  const keyboard = new InlineKeyboard();
+  Object.entries(CATEGORIES).forEach(([id, cat]) => {
+    keyboard.text(cat.label, `admin_cat_${id}`).row();
+  });
+
+  await ctx.reply("💰 *Gestión de Precios*\nElegí una categoría para editar:", {
+    parse_mode: "Markdown",
+    reply_markup: keyboard
+  });
+});
+
+bot.callbackQuery(/^admin_cat_(.+)$/, async (ctx) => {
+  const catId = ctx.match[1];
+  const cat = CATEGORIES[catId];
+  if (!cat) return;
+
+  const keyboard = new InlineKeyboard();
+  cat.keys.forEach(key => {
+    keyboard.text(`✏️ ${KEY_LABELS[key] || key}`, `admin_edit_${key}`).row();
+  });
+  keyboard.text("🔙 Volver", "admin_precios_root");
+
+  await ctx.editMessageText(`📂 *Categoría: ${cat.label}*\nElegí el ítem a modificar:`, {
+    parse_mode: "Markdown",
+    reply_markup: keyboard
+  });
+});
+
+bot.callbackQuery("admin_precios_root", async (ctx) => {
+  const keyboard = new InlineKeyboard();
+  Object.entries(CATEGORIES).forEach(([id, cat]) => {
+    keyboard.text(cat.label, `admin_cat_${id}`).row();
+  });
+  await ctx.editMessageText("💰 *Gestión de Precios*\nElegí una categoría para editar:", {
+    parse_mode: "Markdown",
+    reply_markup: keyboard
+  });
+});
+
+bot.callbackQuery(/^admin_edit_(.+)$/, async (ctx) => {
+  const key = ctx.match[1];
+  ctx.session.awaitingPriceKey = key;
+  
+  await ctx.editMessageText(`✍️ *Editando: ${KEY_LABELS[key] || key}*\n\nIngresá el nuevo valor numérico (solo el número, ej: 12500):`, {
+    parse_mode: "Markdown",
+    reply_markup: new InlineKeyboard().text("❌ Cancelar", "admin_precios_root")
+  });
+});
+
+// Middleware para capturar el nuevo valor del precio
+bot.on("message:text", async (ctx, next) => {
+  if (ctx.session.awaitingPriceKey && ctx.from?.id === adminId) {
+    const val = parseFloat(ctx.message.text.replace(/[^0-9.]/g, ""));
+    if (isNaN(val)) {
+      return ctx.reply("❌ Valor inválido. Mandame solo el número.");
+    }
+
+    const key = ctx.session.awaitingPriceKey;
+    try {
+      await updateBotSetting(key, val);
+      await refreshPrices(); // Sincronizar cache local
+      
+      const label = KEY_LABELS[key] || key;
+      ctx.session.awaitingPriceKey = undefined;
+      
+      await ctx.reply(`✅ *¡Precio actualizado!*\n\n*${label}* ahora cuesta: $${val.toLocaleString('es-AR')}`);
+      
+      // Notificar al canal de auditoría
+      const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
+      if (arch) {
+        await ctx.api.sendMessage(arch, `⚒ *Cambio de Precio:* ${label}\n💰 Nuevo Valor: $${val}\n👤 Admin: ${ctx.from.first_name}`).catch(console.error);
+      }
+    } catch (e) {
+      log.error("ADMIN", "Error al guardar precio", e);
+      await ctx.reply("❌ Error al guardar en la base de datos.");
+    }
+    return;
+  }
+  await next();
+});
+
 // ── Bootstrap y Salud ─────────────────────────────────────────────────────────
 
 async function main() {
@@ -698,7 +846,7 @@ async function main() {
     console.log(`[Health] ✅ Servidor en puerto ${PORT} (/healthz)`);
   });
 
-  // Configurar Menú — comandos para usuarios normales
+  // 1. Configurar Menú — Comandos para TODO el mundo (en chats privados)
   await bot.api.setMyCommands([
     { command: "start", description: "Reiniciar carrito" },
     { command: "config", description: "Cambiar calidades" },
@@ -706,20 +854,28 @@ async function main() {
     { command: "limpiar", description: "Vaciar carrito" },
     { command: "guardar", description: "Archivar presupuesto" },
     { command: "historial", description: "Ver presupuestos guardados" }
-  ]);
+  ], { scope: { type: "all_private_chats" } });
 
-  // Comandos extra visibles sólo para el admin
-  await bot.api.setMyCommands([
-    { command: "start", description: "Reiniciar carrito" },
-    { command: "config", description: "Cambiar calidades" },
-    { command: "resumen", description: "Ver total acumulado" },
-    { command: "limpiar", description: "Vaciar carrito" },
-    { command: "guardar", description: "Archivar presupuesto" },
-    { command: "historial", description: "Ver presupuestos guardados" },
-    { command: "admin_stats", description: "📊 Ver estadísticas del bot" },
-    { command: "admin_invitar", description: "🆕 Generar link de invitación" },
-    { command: "admin_usuarios", description: "👥 Ver usuarios registrados" }
-  ], { scope: { type: "chat", chat_id: adminId } });
+  // 2. Comandos extra — Visibles SÓLO para el admin (en su chat específico)
+  if (adminId > 0) {
+    await bot.api.setMyCommands([
+      { command: "start", description: "Reiniciar carrito" },
+      { command: "config", description: "Cambiar calidades" },
+      { command: "resumen", description: "Ver total acumulado" },
+      { command: "limpiar", description: "Vaciar carrito" },
+      { command: "guardar", description: "Archivar presupuesto" },
+      { command: "historial", description: "Ver presupuestos guardados" },
+      { command: "admin_stats", description: "📊 Ver estadísticas del bot" },
+      { command: "admin_invitar", description: "🆕 Generar link de invitación" },
+      { command: "admin_usuarios", description: "👥 Ver usuarios registrados" },
+      { command: "admin_precios", description: "💰 Gestionar costos (Admin)" }
+    ], { scope: { type: "chat", chat_id: adminId } });
+    
+    console.log(`[Config] Menú de administrador activado para el ID: ${adminId}`);
+  }
+
+  // 0. Inicializar Precios
+  await refreshPrices();
 
   console.log("¡Bot iniciado con éxito!");
 
