@@ -12,6 +12,11 @@ const BOARD_PRICE_18MM_COLOR = 105000;
 const BOARD_PRICE_15MM_WHITE = 73000;
 const BOARD_PRICE_3MM = 29176;
 
+// Canto Prices (50m Rolls)
+const CANTO_ROLL_SIZE = 50;
+const CANTO_ROLL_PRICE_WHITE = 12000;
+const CANTO_ROLL_PRICE_COLOR = 35000;
+
 const WASTE_FACTOR_MULTIPLIER = 1.20; // +20% desperdicio (cortes, vetas, descartes)
 
 // Cajoneras internas default para Placard (2 unidades)
@@ -121,7 +126,13 @@ const HARDWARE_STRATEGY: Record<string, (req: QuoteRequest) => { cost: number, b
     }
 };
 
-function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area15mmWhite: number, area18mmColor: number, area3mm: number } {
+function getDoorCount(widthMm: number): number {
+    if (widthMm <= 500) return 1;
+    if (widthMm <= 1500) return 2;
+    return 3;
+}
+
+function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area15mmWhite: number, area18mmColor: number, area3mm: number, shelfCount: number, doorCount: number } {
     const w = req.dimensions.width / 1000;
     const h = req.dimensions.height / 1000;
     const d = req.dimensions.depth / 1000;
@@ -130,6 +141,19 @@ function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area1
     let area15mmWhite = 0;
     let area18mmColor = 0;
     let area3mm = 0;
+
+    // Defaults de estantes solicitados por el usuario
+    let shelfCount = req.shelfCount ?? 0;
+    if ((req.module === 'bajo_mesada' || req.module === 'alacena') && req.shelfCount === undefined) {
+        shelfCount = 1;
+    }
+
+    let doorCount = 0;
+    if (req.module === 'cajonera') {
+        doorCount = req.drawerCount ?? 3;
+    } else {
+        doorCount = getDoorCount(req.dimensions.width);
+    }
 
     // Fondo trasero exterior
     area3mm += (h * w);
@@ -150,7 +174,8 @@ function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area1
         const sides = 2 * (h * d);
         const bottom = w * d;
         const topStrips = 2 * (w * 0.1);
-        structuralArea = sides + bottom + topStrips;
+        const estantes = shelfCount * (w * d); // Sumamos estantes al bajo mesada
+        structuralArea = sides + bottom + topStrips + estantes;
     }
     else if (req.module === 'cajonera') {
         const drawerCount = req.drawerCount ?? 3;
@@ -160,18 +185,18 @@ function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area1
         area3mm += drawerCount * (w * d);
     }
     else if (req.module === 'alacena') {
-        const shelfCount = req.shelfCount ?? 2;
         const exteriorBody = 2 * (h * d) + 2 * (w * d);
         const estantes = shelfCount * (w * d);
         structuralArea = exteriorBody + estantes;
     }
     else if (req.module === 'placard') {
-        const shelfCount = req.shelfCount ?? 6;
+        const placardShelfCount = req.shelfCount ?? 6; // Default placard
+        shelfCount = placardShelfCount;
 
         // Cuerpo exterior del placard
         const exteriorBody = 2 * (h * d) + 2 * (w * d);
         const internalDivisions = 3 * (h * d);
-        const estantes = shelfCount * (w * d);
+        const estantes = placardShelfCount * (w * d);
 
         // Cajoneras internas (2 × body + 2 × 3 cajones)
         const cajW = PLACARD_INT_CAJONERA_W;
@@ -192,37 +217,56 @@ function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area1
         area18mmWhite += structuralArea;
     }
 
-    return { area18mmWhite, area15mmWhite, area18mmColor, area3mm };
+    return { area18mmWhite, area15mmWhite, area18mmColor, area3mm, shelfCount, doorCount };
 }
 
-// ── Límites de Dimensiones ────────────────────────────────────────────────────
-// Un mueble real no supera 4000mm en ninguna dimensión.
-// Mínimo razonable: 100mm. Esto evita presupuestos absurdos.
-const DIM_MIN_MM = 100;
-const DIM_MAX_MM = 9000;
+function calculateCanto(req: QuoteRequest, shelfCount: number, doorCount: number): { white: number, color: number } {
+    const w = req.dimensions.width / 1000;
+    const h = req.dimensions.height / 1000;
+    // const d = req.dimensions.depth / 1000; // No se usa para canto frontal
 
-function clampDimensions(req: QuoteRequest): QuoteRequest {
-    const clamp = (v: number) => Math.min(Math.max(v, DIM_MIN_MM), DIM_MAX_MM);
-    return {
-        ...req,
-        dimensions: {
-            width: clamp(req.dimensions.width),
-            height: clamp(req.dimensions.height),
-            depth: clamp(req.dimensions.depth),
-        }
-    };
+    let white = 0;
+    let color = 0;
+
+    // 1. Canto de Color: Perímetro de Puertas/Frentes
+    // Asumimos que el frente se divide en N puertas.
+    // El perímetro total de las puertas es aproximadamente el perímetro del frente 
+    // más los laterales internos de las puertas (H * 2*(doorCount-1)).
+    const frontPerimeter = 2 * (w + h);
+    let internalFrontEdges = 0;
+    if (req.module === 'cajonera') {
+        // En cajoneras, los frentes están apilados: sumamos bordes horizontales internos
+        internalFrontEdges = 2 * w * (doorCount - 1);
+    } else {
+        // En el resto, las puertas son verticales: sumamos bordes verticales internos
+        internalFrontEdges = 2 * h * (doorCount - 1);
+    }
+    
+    if (req.frontMaterial === 'color') {
+        color = frontPerimeter + internalFrontEdges;
+    } else {
+        // Si el frente es blanco, el canto del frente es blanco
+        white += (frontPerimeter + internalFrontEdges);
+    }
+
+    // 2. Canto Blanco: Bordes de estructura y estantes
+    // Bordes frontales del cuerpo (lo que se ve al abrir)
+    const bodyFrontEdges = 2 * w + 2 * h;
+    // Borde frontal de cada estante
+    const shelvesEdges = shelfCount * w;
+
+    white += bodyFrontEdges + shelvesEdges;
+
+    return { white, color };
 }
+
+// ... (clampDimensions stays same)
 
 export function calculateQuote(req: QuoteRequest): QuoteResult {
-    // ── Límites de Dimensiones ────────────────────────────────────────────────────
-    // Un mueble real no supera 4000mm en ninguna dimensión.
-    // Mínimo razonable: 100mm. Esto evita presupuestos absurdos.
     const DIM_MIN_MM = 100;
     const DIM_MAX_MM = 4000;
-
     const clamp = (v: number) => Math.min(Math.max(v, DIM_MIN_MM), DIM_MAX_MM);
 
-    // Sanitizar dimensiones antes de calcular
     const safeReq: QuoteRequest = {
         ...req,
         dimensions: {
@@ -232,7 +276,8 @@ export function calculateQuote(req: QuoteRequest): QuoteResult {
         }
     };
 
-    const { area18mmWhite, area15mmWhite, area18mmColor, area3mm } = calculateSurfaceArea(safeReq);
+    const { area18mmWhite, area15mmWhite, area18mmColor, area3mm, shelfCount, doorCount } = calculateSurfaceArea(safeReq);
+    const canto = calculateCanto(safeReq, shelfCount, doorCount);
 
     // Hardware Strategy
     let hardwareCost = 0;
@@ -253,17 +298,23 @@ export function calculateQuote(req: QuoteRequest): QuoteResult {
         fondosBreakdown.push(`Fondos p/ ${intTotal} cajón(es) internos (${PLACARD_INT_CAJONERA_COUNT} cajoneras)`);
     }
 
+    // Actualizamos el request en el resultado para reflejar los estantes por defecto
+    const updatedRequest = { ...safeReq, shelfCount };
+
     return {
         id: Date.now().toString() + Math.random().toString().slice(2, 6),
         module: safeReq.module,
-        request: safeReq,   // guardamos las dimensiones reales usadas, no las originales
+        request: updatedRequest,
         estimatedM2_18mm_white: area18mmWhite,
         estimatedM2_18mm_color: area18mmColor,
         estimatedM2_15mm_white: area15mmWhite,
         estimatedM2_3mm: area3mm,
         hardwareCost,
         hardwareBreakdown,
-        fondosBreakdown
+        fondosBreakdown,
+        cantoMetersWhite: canto.white,
+        cantoMetersColor: canto.color,
+        doorCount
     };
 }
 
@@ -273,6 +324,8 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
     let sum15mmWhite = 0;
     let sum3mm = 0;
     let totalHardwareCost = 0;
+    let totalCantoWhiteMeters = 0;
+    let totalCantoColorMeters = 0;
 
     for (const mod of modules) {
         sum18mmWhite += mod.estimatedM2_18mm_white;
@@ -280,17 +333,25 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
         sum15mmWhite += mod.estimatedM2_15mm_white;
         sum3mm += mod.estimatedM2_3mm;
         totalHardwareCost += mod.hardwareCost;
+        totalCantoWhiteMeters += mod.cantoMetersWhite;
+        totalCantoColorMeters += mod.cantoMetersColor;
     }
 
     const boards18mmWhite = Math.ceil((sum18mmWhite * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_18MM_WHITE);
     const boards18mmColor = Math.ceil((sum18mmColor * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_18MM_COLOR);
     const boards15mmWhite = Math.ceil((sum15mmWhite * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_15MM_WHITE);
     const boards3mm = Math.ceil((sum3mm * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_3MM);
+    
+    // Tapacantos por rollo (Sin desperdicio extra, solo redondeo al alza)
+    const totalCantoWhiteRolls = Math.ceil(totalCantoWhiteMeters / CANTO_ROLL_SIZE);
+    const totalCantoColorRolls = Math.ceil(totalCantoColorMeters / CANTO_ROLL_SIZE);
 
     const cost18mmWhite = boards18mmWhite * BOARD_PRICE_18MM_WHITE;
     const cost18mmColor = boards18mmColor * BOARD_PRICE_18MM_COLOR;
     const cost15mmWhite = boards15mmWhite * BOARD_PRICE_15MM_WHITE;
     const cost3mm = boards3mm * BOARD_PRICE_3MM;
+
+    const totalCantoCost = (totalCantoWhiteRolls * CANTO_ROLL_PRICE_WHITE) + (totalCantoColorRolls * CANTO_ROLL_PRICE_COLOR);
 
     const totalMaterialCost = Math.round(cost18mmWhite + cost18mmColor + cost15mmWhite + cost3mm);
 
@@ -308,6 +369,11 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
             totalMaterialCost
         },
         totalHardwareCost: Math.round(totalHardwareCost),
-        grandTotal: Math.round(totalMaterialCost + totalHardwareCost)
+        totalCantoWhiteMeters,
+        totalCantoColorMeters,
+        totalCantoWhiteRolls,
+        totalCantoColorRolls,
+        totalCantoCost: Math.round(totalCantoCost),
+        grandTotal: Math.round(totalMaterialCost + totalHardwareCost + totalCantoCost)
     };
 }
