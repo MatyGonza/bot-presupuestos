@@ -22,7 +22,7 @@ export const quoteArraySchema = z.array(quoteSchema);
 /**
  * Retorna un QuoteRequest válido inyectando medidas por defecto si el esquema está incompleto.
  */
-export function fillDefaults(req: any): QuoteRequest {
+export function fillDefaults(req: any): any {
   const isMissing = !req.dimensions || !req.dimensions.width || !req.dimensions.height || !req.dimensions.depth;
   let width = req.dimensions?.width;
   let height = req.dimensions?.height;
@@ -42,17 +42,29 @@ export function fillDefaults(req: any): QuoteRequest {
   if (height > MAX_SANE_MM) height = Math.round(height / 100);
   if (depth > MAX_SANE_MM)  depth = Math.round(depth / 100);
 
-  return { ...req, dimensions: { width, height, depth }, dimensionsAssumed: isMissing } as QuoteRequest;
+  return { ...req, dimensions: { width, height, depth }, dimensionsAssumed: isMissing };
 }
 
-/**
- * Parsea y valida la respuesta cruda de un LLM contra el schema de Zod.
- */
-export function parseAndValidate(text: string): QuoteRequest[] {
+export function parseAndValidate(text: string): any[] {
   const cleanText = text.replace(/```json/i, "").replace(/```/g, "").trim();
-  const parsedJson = JSON.parse(cleanText);
-  const validated = quoteArraySchema.parse(parsedJson);
-  return validated.map(fillDefaults);
+  let parsedJson;
+  try {
+    parsedJson = JSON.parse(cleanText);
+  } catch (e) {
+    throw new Error("NLU_PARSE_ERROR");
+  }
+  
+  if (!Array.isArray(parsedJson)) {
+    // A veces devuelve un solo objeto en vez de array
+    if (typeof parsedJson === 'object' && parsedJson !== null) {
+      parsedJson = [parsedJson];
+    } else {
+      throw new Error("NLU_PARSE_ERROR");
+    }
+  }
+
+  // Llenamos defaults y retornamos crudo para que telegram.ts valide individualmente
+  return parsedJson.map(fillDefaults);
 }
 
 export const PROMPT_RULES = `

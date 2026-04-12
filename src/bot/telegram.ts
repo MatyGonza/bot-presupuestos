@@ -1,9 +1,11 @@
 import { Bot, Context, session, SessionFlavor, InlineKeyboard } from "grammy";
 import { supabaseAdapter } from "@grammyjs/storage-supabase";
 import http from "http";
+import { z } from "zod";
 import { parseAudioToQuote, parseTextToQuote } from "../nlu/parser";
+import { fillDefaults } from "../nlu/providers/shared";
 import { calculateQuote, calculateCartTotals } from "../engine/pricing";
-import { QuoteResult, QuoteRequestSchema } from "../engine/types";
+import { QuoteResult, QuoteRequestSchema, QuoteRequest } from "../engine/types";
 import { 
   supabase, 
   isUserAllowed,
@@ -140,7 +142,20 @@ function formatModuleDetail(mod: QuoteResult): string {
   return `\n    └ Medidas: ${dim.width}x${dim.height}x${dim.depth} mm${dimType}${extrasStr}${cantoStr}${hardwareStr}${fondoStr}`;
 }
 
-function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResult[] | null): string {
+function formatValidationErrors(rawModule: any, zError: z.ZodError): string {
+  const errs = zError.issues.map(iss => {
+    const path = iss.path.join('.');
+    if (path === 'module') return "El tipo de mueble no es reconocido. (Intentá especificar: bajo mesada, alacena, placard o cajonera).";
+    if (path.startsWith('dimensions.')) return `Faltó especificar una medida (${iss.path[1] === 'width' ? 'largo/ancho' : iss.path[1] === 'height' ? 'alto' : 'profundidad'}).`;
+    if (path === 'dimensions') return "Faltó especificar el tamaño (ancho, alto, profundidad).";
+    return iss.message;
+  });
+  
+  const attemptedName = (typeof rawModule?.module === 'string') ? rawModule.module : "Módulo sin identificar";
+  return `• ❌ *${attemptedName}*:\n    - ${Array.from(new Set(errs)).join('\n    - ')}`;
+}
+
+function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResult[] | null, failedModules: string[] = []): string {
   const formatter = new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
@@ -192,6 +207,10 @@ function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResul
     reply += `💰 *Costo Total Tapacantos:* ${formatter.format(cartTotals.totalCantoCost)}\n`;
     reply += `💰 *Costo Total Placas:* ${formatter.format(mat.totalMaterialCost)}\n`;
     reply += `🚀 *GRAN TOTAL ACUMULADO:* ${formatter.format(cartTotals.grandTotal)}\n\n`;
+  }
+
+  if (failedModules.length > 0) {
+    reply += `⚠️ *Me faltaron datos para cotizar lo siguiente:*\n${failedModules.join("\n")}\n_¿Me pasás las medidas que faltan?_\n\n`;
   }
 
   reply += `_Comandos: /limpiar para vaciar el carrito._`;
@@ -548,16 +567,19 @@ bot.on("message:text", async (ctx) => {
     const quoteRequestsArrayRaw = await parseTextToQuote(ctx.message.text, "");
     
     // Validación robusta: filtrar solo módulos válidos según el esquema
-    const quoteRequestsArray = quoteRequestsArrayRaw
-      .map(q => {
-        const result = QuoteRequestSchema.safeParse(q);
-        if (!result.success) {
-          log.warn("NLU_VALIDATION", `Módulo descartado por datos corruptos: ${JSON.stringify(result.error.format())}`);
-          return null;
-        }
-        return result.data;
-      })
-      .filter((q): q is any => q !== null);
+    const quoteRequestsArray: QuoteRequest[] = [];
+    const failedModules: string[] = [];
+
+    quoteRequestsArrayRaw.forEach(q => {
+      const qWithDefaults = fillDefaults(q);
+      const result = QuoteRequestSchema.safeParse(qWithDefaults);
+      if (!result.success) {
+        log.warn("NLU_VALIDATION", `Módulo descartado por datos corruptos: ${JSON.stringify(result.error.format())}`);
+        failedModules.push(formatValidationErrors(q, result.error as any));
+      } else {
+        quoteRequestsArray.push(result.data);
+      }
+    });
 
     if (quoteRequestsArray.length === 0) {
       log.warn("NLU", "No se encontraron módulos válidos en el texto");
@@ -565,10 +587,14 @@ bot.on("message:text", async (ctx) => {
       // Notificar al Admin
       const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
       if (arch) {
-        await ctx.api.sendMessage(arch, `⚠️ *NLU Falló (Texto):* No se detectaron módulos.\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})\n💬 Texto: "${ctx.message.text}"`, { parse_mode: "Markdown" }).catch(console.error);
+        await ctx.api.sendMessage(arch, `⚠️ *NLU Falló (Texto):* No se detectaron módulos válidos.\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})\n💬 Texto: "${ctx.message.text}"`, { parse_mode: "Markdown" }).catch(console.error);
       }
 
-      await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, "⚠️ No detecté ningún módulo claro. ¿Podés intentar de nuevo con medidas?");
+      const errorStr = failedModules.length > 0 
+        ? `⚠️ Encontré módulos pero me faltan datos:\n${failedModules.join("\n")}\n\n¿Podés intentar de nuevo con las medidas?`
+        : "⚠️ No detecté ningún módulo claro. ¿Podés intentar de nuevo con medidas?";
+
+      await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, errorStr, { parse_mode: "Markdown" });
       return;
     }
 
@@ -581,13 +607,19 @@ bot.on("message:text", async (ctx) => {
     ctx.session.modules.push(...quoteResults);
     log.info("QUOTE", `${quoteResults.length} módulo(s) agregados para ${ctx.from!.id}`);
 
-    await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, formatProjectReply(ctx.session, quoteResults), {
+    await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, formatProjectReply(ctx.session, quoteResults, failedModules), {
       parse_mode: "Markdown",
       reply_markup: buildCartKeyboard(ctx.session)
     });
-  } catch (error) {
+  } catch (error: any) {
     log.error("NLU", `Error procesando texto de ${ctx.from?.id}`, error);
     
+    // Catch del nuevo parser crasheado
+    if (error.message === 'NLU_PARSE_ERROR') {
+      await ctx.reply("⚠️ No logré entender el pedido. Por favor, decime claro el tipo de módulo (ej. alacena) y sus tres medidas (ancho, alto y profundidad).");
+      return;
+    }
+
     // Notificar al Admin sobre error crítico
     const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
     if (arch) {
@@ -616,13 +648,19 @@ bot.on("message:voice", async (ctx) => {
     const quoteRequestsArrayRaw = await parseAudioToQuote(buffer, "audio/ogg", "");
     
     // Validación de esquema
-    const quoteRequestsArray = quoteRequestsArrayRaw
-      .map(q => {
-        const result = QuoteRequestSchema.safeParse(q);
-        if (!result.success) return null;
-        return result.data;
-      })
-      .filter((q): q is any => q !== null);
+    const quoteRequestsArray: QuoteRequest[] = [];
+    const failedModules: string[] = [];
+
+    quoteRequestsArrayRaw.forEach(q => {
+      const qWithDefaults = fillDefaults(q);
+      const result = QuoteRequestSchema.safeParse(qWithDefaults);
+      if (!result.success) {
+        log.warn("NLU_VALIDATION", `Módulo descartado por datos corruptos: ${JSON.stringify(result.error.format())}`);
+        failedModules.push(formatValidationErrors(q, result.error as any));
+      } else {
+        quoteRequestsArray.push(result.data);
+      }
+    });
 
     if (quoteRequestsArray.length === 0) {
       log.warn("NLU", "No se encontraron módulos válidos en el audio");
@@ -630,10 +668,14 @@ bot.on("message:voice", async (ctx) => {
       // Notificar al Admin
       const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;
       if (arch) {
-        await ctx.api.sendMessage(arch, `⚠️ *NLU Falló (Audio):* No se detectaron módulos.\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})`, { parse_mode: "Markdown" }).catch(console.error);
+        await ctx.api.sendMessage(arch, `⚠️ *NLU Falló (Audio):* No se detectaron módulos válidos.\n👤 Usuario: ${ctx.from?.first_name} (@${ctx.from?.username})`, { parse_mode: "Markdown" }).catch(console.error);
       }
 
-      await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, "⚠️ No detecté módulos en el audio. Intentá de nuevo.");
+      const errorStr = failedModules.length > 0 
+        ? `⚠️ Encontré módulos pero me faltan datos:\n${failedModules.join("\n")}\n\n¿Podés intentar de nuevo con las medidas?`
+        : "⚠️ No detecté módulos en el audio. Intentá de nuevo.";
+
+      await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, errorStr, { parse_mode: "Markdown" });
       return;
     }
 
@@ -646,12 +688,17 @@ bot.on("message:voice", async (ctx) => {
     ctx.session.modules.push(...quoteResults);
     log.info("QUOTE", `${quoteResults.length} módulo(s) agregados para ${ctx.from!.id}`);
 
-    await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, formatProjectReply(ctx.session, quoteResults), {
+    await ctx.api.editMessageText(ctx.chat.id, waitMsg.message_id, formatProjectReply(ctx.session, quoteResults, failedModules), {
       parse_mode: "Markdown",
       reply_markup: buildCartKeyboard(ctx.session)
     });
-  } catch (error) {
+  } catch (error: any) {
     log.error("VOICE", `Error procesando audio de ${ctx.from?.id}`, error);
+
+    if (error.message === 'NLU_PARSE_ERROR') {
+      await ctx.reply("⚠️ No logré entender el pedido del audio. Por favor, decime claro el tipo de módulo (ej. alacena) y sus tres medidas (ancho, alto y profundidad).");
+      return;
+    }
 
     // Notificar al Admin
     const arch = process.env.TELEGRAM_ARCHIVE_CHANNEL_ID;

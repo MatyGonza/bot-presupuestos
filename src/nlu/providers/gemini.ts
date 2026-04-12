@@ -39,7 +39,7 @@ export class GeminiProvider implements INLUProvider {
     });
   }
 
-  async parseAudio(audioBuffer: Buffer, mimeType: string): Promise<QuoteRequest[]> {
+  async parseAudio(audioBuffer: Buffer, mimeType: string): Promise<any[]> {
     const model = this.getModel();
     const prompt = `Sos un experto fabricante de muebles. Escuchá el audio y extraé las medidas (en milímetros) y los tipos de módulo.\n${PROMPT_RULES}`;
     const audioPart = { inlineData: { data: audioBuffer.toString("base64"), mimeType } };
@@ -51,7 +51,7 @@ export class GeminiProvider implements INLUProvider {
     return parseAndValidate(text);
   }
 
-  async parseText(userText: string): Promise<QuoteRequest[]> {
+  async parseText(userText: string): Promise<any[]> {
     const model = this.getModel();
     const prompt = `Sos un experto fabricante de muebles. Analizá el texto y extraé las medidas (en milímetros) y los tipos de módulo.\n${PROMPT_RULES}\n\nTexto del cliente: "${userText}"`;
 
