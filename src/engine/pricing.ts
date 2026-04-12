@@ -1,45 +1,61 @@
 import { QuoteRequest, QuoteResult, CartTotals, MaterialRequirements } from "./types";
+import { getBotSettings } from "../db/supabase";
 
-// Board Physical Sizes (in m2)
+// Cache de precios para evitar pegarle a la DB en cada cálculo
+let priceCache: Record<string, number> = {};
+let lastFetch = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+/**
+ * Carga los precios desde la DB.
+ */
+export async function refreshPrices(): Promise<void> {
+    try {
+        priceCache = await getBotSettings();
+        lastFetch = Date.now();
+        console.log("[Pricing] 📈 Precios actualizados desde la DB");
+    } catch (e) {
+        console.error("[Pricing] ❌ Error al refrescar precios:", e);
+    }
+}
+
+/**
+ * Obtiene un precio con fallback a valores hardcodeados por seguridad.
+ */
+function getPrice(key: string, fallback: number): number {
+    return priceCache[key] ?? fallback;
+}
+
+// Board Physical Sizes (in m2) - Estas son constantes físicas, no cambian
 const BOARD_SIZE_18MM_WHITE = 5.03;
 const BOARD_SIZE_18MM_COLOR = 5.03;
 const BOARD_SIZE_15MM_WHITE = 5.03;
 const BOARD_SIZE_3MM = 4.75;
-
-// Board Prices (Whole board cost)
-const BOARD_PRICE_18MM_WHITE = 86081;
-const BOARD_PRICE_18MM_COLOR = 105000;
-const BOARD_PRICE_15MM_WHITE = 73000;
-const BOARD_PRICE_3MM = 29176;
-
-// Canto Prices (50m Rolls)
 const CANTO_ROLL_SIZE = 50;
-const CANTO_ROLL_PRICE_WHITE = 12000;
-const CANTO_ROLL_PRICE_COLOR = 35000;
 
-const WASTE_FACTOR_MULTIPLIER = 1.20; // +20% desperdicio (cortes, vetas, descartes)
+const WASTE_FACTOR_MULTIPLIER = 1.20; // +20% desperdicio
 
-// Cajoneras internas default para Placard (2 unidades)
+// Cajoneras internas default para Placard
 const PLACARD_INT_CAJONERA_COUNT = 2;
-const PLACARD_INT_CAJONERA_DRAWERS = 3;       // cajones por cajonera
-const PLACARD_INT_CAJONERA_W = 500 / 1000;    // 500mm → m
-const PLACARD_INT_CAJONERA_H = 600 / 1000;    // 600mm → m
-const PLACARD_INT_CAJONERA_D = 500 / 1000;    // 500mm → m (profundidad interna)
+const PLACARD_INT_CAJONERA_DRAWERS = 3;
+const PLACARD_INT_CAJONERA_W = 500 / 1000;
+const PLACARD_INT_CAJONERA_H = 600 / 1000;
+const PLACARD_INT_CAJONERA_D = 500 / 1000;
 
-// Hardware Strategy Pattern dictionary
+// Hardware Strategy Pattern dictionary (Ahora dinámico)
 const HARDWARE_STRATEGY: Record<string, (req: QuoteRequest) => { cost: number, breakdown: string[] }> = {
     'bajo_mesada': (req) => {
         const tier = req.hardwareTier || 'premium';
         let cost = 0;
         let breakdown: string[] = [];
         if (tier === 'standard') {
-            cost = 4000;
+            cost = getPrice('hw_hinge_std', 4000);
             breakdown = ["4 Bisagras comunes + Tiradores plásticos"];
         } else if (tier === 'luxury') {
-            cost = 28000;
+            cost = getPrice('hw_hinge_lux', 28000);
             breakdown = ["4 Bisagras Hettich Cierre Suave + Perfil Gola"];
         } else {
-            cost = 10800; // Premium
+            cost = getPrice('hw_hinge_pre', 10800); // Premium
             breakdown = ["4 Bisagras Eurohard Cierre Suave + Perfil J/C"];
         }
         return { cost, breakdown };
@@ -51,14 +67,13 @@ const HARDWARE_STRATEGY: Record<string, (req: QuoteRequest) => { cost: number, b
         let desc = "";
 
         if (tier === 'standard') {
-            unitCost = 4000;
+            unitCost = getPrice('hw_slide_std', 4000);
             desc = "Guías Z Económicas";
         } else if (tier === 'luxury') {
-            unitCost = 40000;
+            unitCost = getPrice('hw_slide_lux', 40400); // Antes 40000, unificamos a 40400 si querés o mantenemos
             desc = "Guías Ocultas / Tandembox";
         } else {
-            // premium
-            unitCost = 10368;
+            unitCost = getPrice('hw_slide_pre', 10368);
             desc = "Telescópicas Cierre Suave Zinc";
         }
         return {
@@ -71,13 +86,13 @@ const HARDWARE_STRATEGY: Record<string, (req: QuoteRequest) => { cost: number, b
         let cost = 0;
         let breakdown: string[] = [];
         if (tier === 'standard') {
-            cost = 4000;
+            cost = getPrice('hw_hinge_std', 4000);
             breakdown = ["4 Bisagras comunes + Tiradores plásticos"];
         } else if (tier === 'luxury') {
-            cost = 28000;
+            cost = getPrice('hw_hinge_lux', 28000);
             breakdown = ["4 Bisagras Hettich Cierre Suave + Puertas sin tirador (Push)"];
         } else {
-            cost = 10800;
+            cost = getPrice('hw_hinge_pre', 10800);
             breakdown = ["4 Bisagras Eurohard Cierre Suave + Perfil Aluminio"];
         }
         return { cost, breakdown };
@@ -88,26 +103,26 @@ const HARDWARE_STRATEGY: Record<string, (req: QuoteRequest) => { cost: number, b
         let drawerDesc = "";
 
         if (tier === 'standard') {
-            drawerUnitCost = 4000;
+            drawerUnitCost = getPrice('hw_slide_std', 4000);
             drawerDesc = "Guías Z Económicas";
         } else if (tier === 'luxury') {
-            drawerUnitCost = 40000;
+            drawerUnitCost = getPrice('hw_slide_lux', 40400);
             drawerDesc = "Guías Ocultas / Tandembox";
         } else {
-            drawerUnitCost = 10368;
+            drawerUnitCost = getPrice('hw_slide_pre', 10368);
             drawerDesc = "Telescópicas Cierre Suave Zinc";
         }
 
         let sysCost = 0;
         let sysDesc = "";
         if (tier === 'standard') {
-            sysCost = 50000;
+            sysCost = getPrice('hw_sliding_std', 18000); // Ajustamos a los keys del SQL
             sysDesc = "Kit corredizo económico plástico";
         } else if (tier === 'luxury') {
-            sysCost = 350000;
+            sysCost = getPrice('hw_sliding_lux', 120000);
             sysDesc = "Kit corredizo Ducasse Premium C/Suave";
         } else {
-            sysCost = 150000;
+            sysCost = getPrice('hw_sliding_pre', 60000);
             sysDesc = "Kit corredizo + Perfilería Aluminio";
         }
 
@@ -346,12 +361,12 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
     const totalCantoWhiteRolls = Math.ceil(totalCantoWhiteMeters / CANTO_ROLL_SIZE);
     const totalCantoColorRolls = Math.ceil(totalCantoColorMeters / CANTO_ROLL_SIZE);
 
-    const cost18mmWhite = boards18mmWhite * BOARD_PRICE_18MM_WHITE;
-    const cost18mmColor = boards18mmColor * BOARD_PRICE_18MM_COLOR;
-    const cost15mmWhite = boards15mmWhite * BOARD_PRICE_15MM_WHITE;
-    const cost3mm = boards3mm * BOARD_PRICE_3MM;
+    const cost18mmWhite = boards18mmWhite * getPrice('board_18mm_white', 86081);
+    const cost18mmColor = boards18mmColor * getPrice('board_18mm_color', 105000);
+    const cost15mmWhite = boards15mmWhite * getPrice('board_15mm_white', 73000);
+    const cost3mm = boards3mm * getPrice('board_3mm', 29176);
 
-    const totalCantoCost = (totalCantoWhiteRolls * CANTO_ROLL_PRICE_WHITE) + (totalCantoColorRolls * CANTO_ROLL_PRICE_COLOR);
+    const totalCantoCost = (totalCantoWhiteRolls * getPrice('canto_roll_white', 12000)) + (totalCantoColorRolls * getPrice('canto_roll_color', 35000));
 
     const totalMaterialCost = Math.round(cost18mmWhite + cost18mmColor + cost15mmWhite + cost3mm);
 
