@@ -69,14 +69,17 @@ async function main() {
   });
 
   // Configurar Menú — Comandos para TODO el mundo (en chats privados)
-  await bot.api.setMyCommands([
+  const baseCommands = [
     { command: "start", description: "Reiniciar carrito" },
     { command: "config", description: "Cambiar calidades" },
     { command: "resumen", description: "Ver total acumulado" },
     { command: "limpiar", description: "Vaciar carrito" },
     { command: "guardar", description: "Archivar presupuesto" },
     { command: "historial", description: "Ver presupuestos guardados" }
-  ], { scope: { type: "all_private_chats" } });
+  ];
+
+  await bot.api.setMyCommands(baseCommands, { scope: { type: "default" } });
+  await bot.api.setMyCommands(baseCommands, { scope: { type: "all_private_chats" } });
 
   // Comandos extra — Visibles SÓLO para el admin (en su chat específico)
   if (adminId > 0) {
