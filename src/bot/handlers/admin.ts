@@ -28,13 +28,15 @@ adminBot.command("admin_usuarios", async (ctx) => {
       return ctx.reply("No hay usuarios registrados aún.");
     }
 
-    let reply = "👤 *Usuarios Registrados:*\n\n";
+    let reply = "👤 <b>Usuarios Registrados:</b>\n\n";
     users.forEach((u: any, i: number) => {
       const date = new Date(u.created_at).toLocaleDateString("es-AR");
-      reply += `${i + 1}. *${u.name || 'Sin nombre'}* (@${u.username || "sin_user"}) | ID: \`${u.telegram_id}\` | ${date}\n`;
+      const name = (u.name || 'Sin nombre').replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const user = (u.username || "sin_user").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      reply += `${i + 1}. <b>${name}</b> (@${user}) | ID: <code>${u.telegram_id}</code> | ${date}\n`;
     });
     
-    await ctx.reply(reply, { parse_mode: "Markdown" });
+    await ctx.reply(reply, { parse_mode: "HTML" });
   } catch (error) {
     log.error("ADMIN_USUARIOS", "Catch", error);
     await ctx.reply("⚠️ Error listando usuarios. Revisá los logs.");
