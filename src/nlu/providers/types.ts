@@ -8,10 +8,10 @@ export interface INLUProvider {
   /**
    * Analiza un buffer de audio y extrae los módulos de muebles detectados.
    */
-  parseAudio(audioBuffer: Buffer, mimeType: string): Promise<QuoteRequest[]>;
+  parseAudio(audioBuffer: Buffer, mimeType: string): Promise<any[]>;
 
   /**
    * Analiza texto libre y extrae los módulos de muebles detectados.
    */
-  parseText(userText: string): Promise<QuoteRequest[]>;
+  parseText(userText: string): Promise<any[]>;
 }

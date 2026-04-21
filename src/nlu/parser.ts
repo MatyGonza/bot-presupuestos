@@ -21,7 +21,7 @@ export async function parseAudioToQuote(
   audioBuffer: Buffer,
   mimeType: string,
   _apiKey: string  // Mantenido por compatibilidad — la key viene del .env vía factory
-): Promise<QuoteRequest[]> {
+): Promise<any[]> {
   return getProvider().parseAudio(audioBuffer, mimeType);
 }
 
@@ -32,6 +32,6 @@ export async function parseAudioToQuote(
 export async function parseTextToQuote(
   userText: string,
   _apiKey: string  // Mantenido por compatibilidad — la key viene del .env vía factory
-): Promise<QuoteRequest[]> {
+): Promise<any[]> {
   return getProvider().parseText(userText);
 }

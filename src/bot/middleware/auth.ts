@@ -1,4 +1,4 @@
-import { MyContext } from "../telegram";
+import { MyContext } from "../types";
 import { isUserAllowed } from "../../db/supabase";
 
 const adminId = parseInt(process.env.ADMIN_TELEGRAM_ID || "0", 10);

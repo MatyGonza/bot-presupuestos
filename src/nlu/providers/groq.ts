@@ -35,7 +35,7 @@ export class GroqProvider implements INLUProvider {
     this.client = new Groq({ apiKey });
   }
 
-  async parseAudio(audioBuffer: Buffer, mimeType: string): Promise<QuoteRequest[]> {
+  async parseAudio(audioBuffer: Buffer, mimeType: string): Promise<any[]> {
     // PASO 1: Transcribir el audio con Whisper
     console.log(`[Groq] 🎙️ Transcribiendo audio con ${this.audioModel}...`);
 
@@ -56,7 +56,7 @@ export class GroqProvider implements INLUProvider {
     return this.parseText(transcribedText);
   }
 
-  async parseText(userText: string): Promise<QuoteRequest[]> {
+  async parseText(userText: string): Promise<any[]> {
     console.log(`[Groq] 🌐 Extrayendo módulos con ${this.textModel}...`);
 
     const response = await this.client.chat.completions.create({
