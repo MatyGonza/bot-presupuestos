@@ -3,6 +3,7 @@ import { supabaseAdapter } from "@grammyjs/storage-supabase";
 import http from "http";
 import { supabase } from "../db/supabase";
 import { authMiddleware } from "./middleware/auth";
+import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { refreshPrices } from "../engine/pricing";
 import * as dotenv from "dotenv";
 
@@ -35,12 +36,15 @@ bot.use(session({
     modules: [],
     defaultFrontMaterial: "blanco",
     defaultHardwareTier: "premium",
-    defaultInternalThickness: "15mm"
+    defaultInternalThickness: "15mm",
+    awaitingClientName: false,
+    awaitingPriceKey: undefined
   }),
   storage,
 }));
 
-// 3. Middleware de Autorización (Global)
+// 3. Middlewares Globales
+bot.use(rateLimitMiddleware);
 bot.use(authMiddleware);
 
 // 4. Registrar Enrutadores Modulares (Magia copiada de asynctelebot_template)

@@ -12,3 +12,8 @@ export interface SessionData {
 }
 
 export type MyContext = Context & SessionFlavor<SessionData>;
+
+export interface NluProcessResult {
+  validQuotes: QuoteResult[];
+  errorMessages: string[];
+}
