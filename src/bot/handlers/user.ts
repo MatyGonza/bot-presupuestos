@@ -293,6 +293,10 @@ userRouter.on("message:text", async (ctx, next) => {
 });
 
 userRouter.on("message:voice", async (ctx) => {
+  if (ctx.session.awaitingClientName) {
+    return ctx.reply("⚠️ Estoy esperando un nombre de cliente. Por favor, escribilo por texto.");
+  }
+
   if (isRateLimited(ctx.from!.id)) {
     return ctx.reply("⏳ Esperá un momento (límite de envíos).");
   }
