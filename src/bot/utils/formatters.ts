@@ -52,13 +52,18 @@ export function formatValidationErrors(rawModule: any, zError: z.ZodError): stri
 }
 
 export function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResult[] | null, failedModules: string[] = []): string {
+  const margin = sessionData.tenantSettings?.margin || 1.0;
+  const marginPercent = Math.round((margin - 1) * 100);
+  const currencyCode = sessionData.tenantSettings?.currency === 'U$D' ? 'USD' : 'ARS';
+  const currencyDisplay = sessionData.tenantSettings?.currency === 'U$D' ? 'USD' : 'ARS';
+
   const formatter = new Intl.NumberFormat('es-AR', {
     style: 'currency',
-    currency: 'ARS',
+    currency: currencyDisplay,
     maximumFractionDigits: 0
   });
 
-  const cartTotals = calculateCartTotals(sessionData.modules);
+  const cartTotals = calculateCartTotals(sessionData.modules, sessionData.tenantSettings);
   let reply = "";
 
   if (lastAddedBatch && lastAddedBatch.length > 0) {
@@ -99,10 +104,13 @@ export function formatProjectReply(sessionData: SessionData, lastAddedBatch: Quo
     }
 
     reply += `\n---\n`;
-    reply += `💰 *Costo Total Herrajes:* ${formatter.format(cartTotals.totalHardwareCost)}\n`;
-    reply += `💰 *Costo Total Tapacantos:* ${formatter.format(cartTotals.totalCantoCost)}\n`;
-    reply += `💰 *Costo Total Placas:* ${formatter.format(mat.totalMaterialCost)}\n`;
-    reply += `🚀 *GRAN TOTAL ACUMULADO:* ${formatter.format(cartTotals.grandTotal)}\n\n`;
+    reply += `💰 *Costo Herrajes:* ${formatter.format(cartTotals.totalHardwareCost)}\n`;
+    reply += `💰 *Costo Tapacantos:* ${formatter.format(cartTotals.totalCantoCost)}\n`;
+    reply += `💰 *Costo Placas:* ${formatter.format(mat.totalMaterialCost)}\n`;
+    if (marginPercent > 0) {
+      reply += `📈 *Margen Aplicado:* +${marginPercent}%\n`;
+    }
+    reply += `🚀 *PRECIO TOTAL DE VENTA:* ${formatter.format(cartTotals.grandTotal)}\n\n`;
   }
 
   if (failedModules.length > 0) {

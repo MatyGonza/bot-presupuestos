@@ -23,6 +23,7 @@ export interface AllowedUser {
   invited_by_code: string | null;
   role: "admin" | "user";
   created_at: string;
+  tenant_settings?: { margin: number, currency: string } | null;
 }
 
 export interface Invitation {
@@ -60,6 +61,32 @@ export async function isUserAllowed(telegramId: number | string): Promise<boolea
 
   if (error || !data) return false;
   return true;
+}
+
+/**
+ * Obtiene el perfil del usuario completo.
+ */
+export async function getUserProfile(telegramId: number | string): Promise<AllowedUser | null> {
+  const { data, error } = await supabase
+    .from("allowed_users")
+    .select("*")
+    .eq("telegram_id", telegramId.toString())
+    .single();
+
+  if (error || !data) return null;
+  return data as AllowedUser;
+}
+
+/**
+ * Actualiza la configuración B2B del usuario.
+ */
+export async function updateTenantSettings(telegramId: number, settings: { margin: number, currency: string }): Promise<void> {
+  const { error } = await supabase
+    .from("allowed_users")
+    .update({ tenant_settings: settings })
+    .eq("telegram_id", telegramId.toString());
+
+  if (error) throw error;
 }
 
 /**

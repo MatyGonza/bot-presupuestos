@@ -1,5 +1,5 @@
 import { MyContext } from "../types";
-import { isUserAllowed } from "../../db/supabase";
+import { isUserAllowed, getUserProfile } from "../../db/supabase";
 
 const adminId = parseInt(process.env.ADMIN_TELEGRAM_ID || "0", 10);
 
@@ -15,14 +15,23 @@ export async function authMiddleware(ctx: MyContext, next: () => Promise<void>) 
 
   // 1. El Admin entra siempre
   if (userId === adminId) {
+    if (!ctx.session.tenantSettings) {
+      ctx.session.tenantSettings = { margin: 1.0, currency: "$" };
+    }
     return next();
   }
 
   // 2. Verificar en base de datos
   try {
-    const allowed = await isUserAllowed(userId);
+    const profile = await getUserProfile(userId);
     
-    if (allowed) {
+    if (profile) {
+      if (!ctx.session.tenantSettings && profile.tenant_settings) {
+        ctx.session.tenantSettings = profile.tenant_settings;
+      } else if (!ctx.session.tenantSettings) {
+        // Asignar default en sesión
+        ctx.session.tenantSettings = { margin: 1.0, currency: "$" };
+      }
       return next();
     }
   } catch (error) {

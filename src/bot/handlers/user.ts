@@ -1,7 +1,7 @@
 import { Composer } from "grammy";
 import { z } from "zod";
 import { MyContext } from "../types";
-import { isUserAllowed, registerUser, saveQuote, getQuotesByUser, getQuoteById } from "../../db/supabase";
+import { isUserAllowed, registerUser, saveQuote, getQuotesByUser, getQuoteById, updateTenantSettings } from "../../db/supabase";
 import { calculateCartTotals } from "../../engine/pricing";
 import { QuoteResult } from "../../engine/types";
 import { processTextQuote, processAudioQuote } from "../services/nluProcessor";
@@ -171,6 +171,11 @@ userRouter.on("message", async (ctx, next) => {
       return ctx.reply("⚠️ Estoy esperando un nombre de cliente válido. Por favor, escribilo con el teclado.");
     }
   }
+  if (ctx.session.awaitingProfitMargin) {
+    if (!ctx.message.text) {
+      return ctx.reply("⚠️ Estoy esperando un número. Por favor, escribilo con el teclado.");
+    }
+  }
   return next();
 });
 
@@ -188,6 +193,34 @@ userRouter.on("message:text", async (ctx, next) => {
     ctx.session.awaitingClientName = false;
     await executeArchive(ctx, result.data);
     return;
+  }
+
+  if (ctx.session.awaitingProfitMargin) {
+    const raw = ctx.message.text.trim().replace(/[^0-9]/g, "");
+    if (!raw) {
+      return ctx.reply("❌ Formato inválido. Pasame un número entero (ej: 40).");
+    }
+    
+    const marginPercent = parseInt(raw, 10);
+    const newMargin = 1 + (marginPercent / 100);
+    
+    if (!ctx.session.tenantSettings) {
+      ctx.session.tenantSettings = { margin: newMargin, currency: "$" };
+    } else {
+      ctx.session.tenantSettings.margin = newMargin;
+    }
+    
+    ctx.session.awaitingProfitMargin = false;
+    
+    await ctx.reply(`✅ Rentabilidad actualizada al +${marginPercent}%.\n(Guardado en tu perfil B2B).`);
+    await updateTenantSettings(ctx.from!.id, ctx.session.tenantSettings).catch(e => {
+      log.error("CONFIG", "Error guardando tenant settings", e instanceof Error ? e : new Error(String(e)));
+    });
+    
+    return ctx.reply("⚙️ *Configuración del Proyecto actual:*", {
+      parse_mode: "Markdown",
+      reply_markup: buildConfigKeyboard(ctx.session)
+    });
   }
 
 
@@ -282,6 +315,12 @@ userRouter.on("callback_query:data", async (ctx, next) => {
       parse_mode: "Markdown",
       reply_markup: buildConfigKeyboard(ctx.session)
     });
+  }
+
+  if (data === "edit_profit_margin") {
+    ctx.session.awaitingProfitMargin = true;
+    await ctx.answerCallbackQuery();
+    return ctx.reply("✏️ Escribime en números el porcentaje de ganancia que querés sumarle al costo.\n(Ej: `40` para un 40% de ganancia)", { parse_mode: "Markdown" });
   }
 
   if (data === "toggle_front_material") {

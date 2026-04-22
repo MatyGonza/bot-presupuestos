@@ -1,4 +1,5 @@
 import { QuoteRequest, QuoteResult, CartTotals, MaterialRequirements } from "./types";
+import { TenantSettings } from "../bot/types";
 import { getBotSettings } from "../db/supabase";
 
 // Cache de precios para evitar pegarle a la DB en cada cálculo
@@ -333,7 +334,7 @@ export function calculateQuote(req: QuoteRequest): QuoteResult {
     };
 }
 
-export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
+export function calculateCartTotals(modules: QuoteResult[], tenantSettings?: TenantSettings): CartTotals {
     let sum18mmWhite = 0;
     let sum18mmColor = 0;
     let sum15mmWhite = 0;
@@ -357,18 +358,20 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
     const boards15mmWhite = Math.ceil((sum15mmWhite * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_15MM_WHITE);
     const boards3mm = Math.ceil((sum3mm * WASTE_FACTOR_MULTIPLIER) / BOARD_SIZE_3MM);
     
-    // Tapacantos por rollo (Sin desperdicio extra, solo redondeo al alza)
     const totalCantoWhiteRolls = Math.ceil(totalCantoWhiteMeters / CANTO_ROLL_SIZE);
     const totalCantoColorRolls = Math.ceil(totalCantoColorMeters / CANTO_ROLL_SIZE);
 
-    const cost18mmWhite = boards18mmWhite * getPrice('board_18mm_white', 86081);
-    const cost18mmColor = boards18mmColor * getPrice('board_18mm_color', 105000);
-    const cost15mmWhite = boards15mmWhite * getPrice('board_15mm_white', 73000);
-    const cost3mm = boards3mm * getPrice('board_3mm', 29176);
+    const margin = tenantSettings?.margin || 1.0;
 
-    const totalCantoCost = (totalCantoWhiteRolls * getPrice('canto_roll_white', 12000)) + (totalCantoColorRolls * getPrice('canto_roll_color', 35000));
+    const cost18mmWhite = boards18mmWhite * getPrice('board_18mm_white', 86081) * margin;
+    const cost18mmColor = boards18mmColor * getPrice('board_18mm_color', 105000) * margin;
+    const cost15mmWhite = boards15mmWhite * getPrice('board_15mm_white', 73000) * margin;
+    const cost3mm = boards3mm * getPrice('board_3mm', 29176) * margin;
+
+    const totalCantoCost = ((totalCantoWhiteRolls * getPrice('canto_roll_white', 12000)) + (totalCantoColorRolls * getPrice('canto_roll_color', 35000))) * margin;
 
     const totalMaterialCost = Math.round(cost18mmWhite + cost18mmColor + cost15mmWhite + cost3mm);
+    const finalHardwareCost = Math.round(totalHardwareCost * margin);
 
     return {
         modules,
@@ -377,18 +380,18 @@ export function calculateCartTotals(modules: QuoteResult[]): CartTotals {
             boards18mmColor,
             boards15mmWhite,
             boards3mm,
-            cost18mmWhite,
-            cost18mmColor,
-            cost15mmWhite,
-            cost3mm,
+            cost18mmWhite: Math.round(cost18mmWhite),
+            cost18mmColor: Math.round(cost18mmColor),
+            cost15mmWhite: Math.round(cost15mmWhite),
+            cost3mm: Math.round(cost3mm),
             totalMaterialCost
         },
-        totalHardwareCost: Math.round(totalHardwareCost),
+        totalHardwareCost: finalHardwareCost,
         totalCantoWhiteMeters,
         totalCantoColorMeters,
         totalCantoWhiteRolls,
         totalCantoColorRolls,
         totalCantoCost: Math.round(totalCantoCost),
-        grandTotal: Math.round(totalMaterialCost + totalHardwareCost + totalCantoCost)
+        grandTotal: Math.round(totalMaterialCost + finalHardwareCost + totalCantoCost)
     };
 }

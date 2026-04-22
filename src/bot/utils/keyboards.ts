@@ -24,10 +24,15 @@ export function buildConfigKeyboard(session: SessionData): InlineKeyboard {
   const thickness = session.defaultInternalThickness || "18mm";
   const tier = session.defaultHardwareTier || "premium";
   const tierLabel = tier === 'standard' ? '💰 Económico' : tier === 'luxury' ? '💎 Luxury' : '⭐ Premium';
+  
+  const margin = session.tenantSettings?.margin || 1.0;
+  const marginPercent = Math.round((margin - 1) * 100);
+
   return new InlineKeyboard()
     .text(`🎨 Frentes: ${front.toUpperCase()} 🔄`, "toggle_front_material").row()
     .text(`📐 Interior: ${thickness} 🔄`, "toggle_internal_thickness").row()
-    .text(`🔩 Herrajes: ${tierLabel}`, "cycle_hardware_tier");
+    .text(`🔩 Herrajes: ${tierLabel}`, "cycle_hardware_tier").row()
+    .text(`📈 Mi Rentabilidad: +${marginPercent}% ✏️`, "edit_profit_margin");
 }
 
 export function buildHistoryKeyboard(quotes: any[]): InlineKeyboard {
