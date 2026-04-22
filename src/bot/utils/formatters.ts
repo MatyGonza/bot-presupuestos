@@ -54,7 +54,6 @@ export function formatValidationErrors(rawModule: any, zError: z.ZodError): stri
 export function formatProjectReply(sessionData: SessionData, lastAddedBatch: QuoteResult[] | null, failedModules: string[] = []): string {
   const margin = sessionData.tenantSettings?.margin || 1.0;
   const marginPercent = Math.round((margin - 1) * 100);
-  const currencyCode = sessionData.tenantSettings?.currency === 'U$D' ? 'USD' : 'ARS';
   const currencyDisplay = sessionData.tenantSettings?.currency === 'U$D' ? 'USD' : 'ARS';
 
   const formatter = new Intl.NumberFormat('es-AR', {
@@ -104,11 +103,17 @@ export function formatProjectReply(sessionData: SessionData, lastAddedBatch: Quo
     }
 
     reply += `\n---\n`;
-    reply += `💰 *Costo Herrajes:* ${formatter.format(cartTotals.totalHardwareCost)}\n`;
-    reply += `💰 *Costo Tapacantos:* ${formatter.format(cartTotals.totalCantoCost)}\n`;
-    reply += `💰 *Costo Placas:* ${formatter.format(mat.totalMaterialCost)}\n`;
+    reply += `💰 *Costo Neto Herrajes:* ${formatter.format(cartTotals.totalHardwareCost)}\n`;
+    reply += `💰 *Costo Neto Tapacantos:* ${formatter.format(cartTotals.totalCantoCost)}\n`;
+    reply += `💰 *Costo Neto Placas:* ${formatter.format(mat.totalMaterialCost)}\n`;
+    
+    const totalNeto = cartTotals.totalHardwareCost + cartTotals.totalCantoCost + mat.totalMaterialCost;
+    reply += `================================\n`;
+    reply += `🧱 *COSTO TOTAL MATERIALES:* ${formatter.format(totalNeto)}\n`;
+
     if (marginPercent > 0) {
-      reply += `📈 *Margen Aplicado:* +${marginPercent}%\n`;
+      const ganancia = cartTotals.grandTotal - totalNeto;
+      reply += `📈 *Margen Aplicado (+${marginPercent}%):* +${formatter.format(ganancia)}\n`;
     }
     reply += `🚀 *PRECIO TOTAL DE VENTA:* ${formatter.format(cartTotals.grandTotal)}\n\n`;
   }

@@ -363,15 +363,15 @@ export function calculateCartTotals(modules: QuoteResult[], tenantSettings?: Ten
 
     const margin = tenantSettings?.margin || 1.0;
 
-    const cost18mmWhite = boards18mmWhite * getPrice('board_18mm_white', 86081) * margin;
-    const cost18mmColor = boards18mmColor * getPrice('board_18mm_color', 105000) * margin;
-    const cost15mmWhite = boards15mmWhite * getPrice('board_15mm_white', 73000) * margin;
-    const cost3mm = boards3mm * getPrice('board_3mm', 29176) * margin;
+    const cost18mmWhite = boards18mmWhite * getPrice('board_18mm_white', 86081);
+    const cost18mmColor = boards18mmColor * getPrice('board_18mm_color', 105000);
+    const cost15mmWhite = boards15mmWhite * getPrice('board_15mm_white', 73000);
+    const cost3mm = boards3mm * getPrice('board_3mm', 29176);
 
-    const totalCantoCost = ((totalCantoWhiteRolls * getPrice('canto_roll_white', 12000)) + (totalCantoColorRolls * getPrice('canto_roll_color', 35000))) * margin;
+    const totalCantoCost = (totalCantoWhiteRolls * getPrice('canto_roll_white', 12000)) + (totalCantoColorRolls * getPrice('canto_roll_color', 35000));
 
     const totalMaterialCost = Math.round(cost18mmWhite + cost18mmColor + cost15mmWhite + cost3mm);
-    const finalHardwareCost = Math.round(totalHardwareCost * margin);
+    const finalHardwareCost = Math.round(totalHardwareCost);
 
     return {
         modules,
@@ -392,6 +392,6 @@ export function calculateCartTotals(modules: QuoteResult[], tenantSettings?: Ten
         totalCantoWhiteRolls,
         totalCantoColorRolls,
         totalCantoCost: Math.round(totalCantoCost),
-        grandTotal: Math.round(totalMaterialCost + finalHardwareCost + totalCantoCost)
+        grandTotal: Math.round((totalMaterialCost + finalHardwareCost + totalCantoCost) * margin)
     };
 }
