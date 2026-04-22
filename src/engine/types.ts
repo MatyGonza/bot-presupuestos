@@ -10,9 +10,9 @@ export const QuoteRequestSchema = z.object({
     dimensionsAssumed: z.boolean().optional(),
     drawerCount: z.number().min(0).max(20).optional(),
     shelfCount: z.number().min(0).max(50).optional(),
-    frontMaterial: z.enum(["blanco", "color"]).optional(),
+    frontMaterial: z.enum(["blanco", "color", "color_veta"]).optional(),
     hardwareTier: z.enum(["standard", "premium", "luxury"]).optional(),
-    internalThickness: z.enum(["18mm", "15mm"]).optional(),
+    internalThickness: z.enum(["18mm", "15mm", "18mm_color"]).optional(),
 });
 
 export type ModuleType = "bajo_mesada" | "alacena" | "placard" | "cajonera";
@@ -33,9 +33,9 @@ export interface QuoteRequest {
     dimensionsAssumed?: boolean;
     drawerCount?: number;
     shelfCount?: number;
-    frontMaterial?: "blanco" | "color";
+    frontMaterial?: "blanco" | "color" | "color_veta";
     hardwareTier?: "standard" | "premium" | "luxury";
-    internalThickness?: "18mm" | "15mm";
+    internalThickness?: "18mm" | "15mm" | "18mm_color";
 }
 
 export interface QuoteResult {

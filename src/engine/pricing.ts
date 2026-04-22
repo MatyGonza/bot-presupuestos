@@ -176,9 +176,11 @@ function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area1
 
     // FRENTES: Siempre 18mm, definidos por el color
     const frontArea = (h * w);
-    const useColor = req.frontMaterial === 'color';
-    if (useColor) {
-        area18mmColor += frontArea;
+    const isColor = req.frontMaterial === 'color' || req.frontMaterial === 'color_veta';
+    const vetaPenalty = req.frontMaterial === 'color_veta' ? 1.15 : 1.0;
+
+    if (isColor) {
+        area18mmColor += (frontArea * vetaPenalty);
     } else {
         area18mmWhite += frontArea;
     }
@@ -229,6 +231,8 @@ function calculateSurfaceArea(req: QuoteRequest): { area18mmWhite: number, area1
 
     if (req.internalThickness === '15mm') {
         area15mmWhite += structuralArea;
+    } else if (req.internalThickness === '18mm_color') {
+        area18mmColor += structuralArea;
     } else {
         area18mmWhite += structuralArea;
     }

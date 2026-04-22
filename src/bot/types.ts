@@ -12,9 +12,9 @@ export interface SessionData {
   awaitingClientName?: boolean;
   awaitingPriceKey?: string; // Para el flujo de /admin_precios
   awaitingProfitMargin?: boolean;
-  defaultFrontMaterial?: "blanco" | "color";
+  defaultFrontMaterial?: "blanco" | "color" | "color_veta";
   defaultHardwareTier?: "standard" | "premium" | "luxury";
-  defaultInternalThickness?: "18mm" | "15mm";
+  defaultInternalThickness?: "18mm" | "15mm" | "18mm_color";
   tenantSettings?: TenantSettings;
 }
 

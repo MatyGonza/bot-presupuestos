@@ -5,7 +5,7 @@ import { isUserAllowed, registerUser, saveQuote, getQuotesByUser, getQuoteById, 
 import { calculateCartTotals } from "../../engine/pricing";
 import { QuoteResult } from "../../engine/types";
 import { processTextQuote, processAudioQuote } from "../services/nluProcessor";
-import { buildCartKeyboard, buildConfigKeyboard, buildHistoryKeyboard } from "../utils/keyboards";
+import { buildCartKeyboard, buildConfigKeyboard, buildHistoryKeyboard, buildConfigMenuFrentes, buildConfigMenuHerrajes, buildConfigMenuInterior } from "../utils/keyboards";
 import { formatProjectReply, formatValidationErrors } from "../utils/formatters";
 import { log } from "../utils/logger";
 import { executeArchive } from "../services/archive";
@@ -311,7 +311,7 @@ userRouter.on("callback_query:data", async (ctx, next) => {
 
   if (data === "action_configurar") {
     await ctx.answerCallbackQuery();
-    return ctx.reply("⚙️ *Configuración del Proyecto*\n\nAjustá los defaults de este cliente:", {
+    return ctx.editMessageText("⚙️ *Configuración del Proyecto*\n\nAjustá los defaults de este cliente:", {
       parse_mode: "Markdown",
       reply_markup: buildConfigKeyboard(ctx.session)
     });
@@ -323,22 +323,51 @@ userRouter.on("callback_query:data", async (ctx, next) => {
     return ctx.reply("✏️ Escribime en números el porcentaje de ganancia que querés sumarle al costo.\n(Ej: `40` para un 40% de ganancia)", { parse_mode: "Markdown" });
   }
 
-  if (data === "toggle_front_material") {
-    ctx.session.defaultFrontMaterial = ctx.session.defaultFrontMaterial === "blanco" ? "color" : "blanco";
-    await ctx.editMessageReplyMarkup({ reply_markup: buildConfigKeyboard(ctx.session) });
-    return ctx.answerCallbackQuery(`Frentes → ${ctx.session.defaultFrontMaterial.toUpperCase()}`);
+  // --- SUBMENUS NAVIGATION ---
+  if (data === "action_resumen") {
+    await ctx.answerCallbackQuery();
+    return ctx.editMessageText(formatProjectReply(ctx.session, null), {
+      parse_mode: "Markdown",
+      reply_markup: ctx.session.modules.length > 0 ? buildCartKeyboard(ctx.session) : undefined
+    });
   }
-  if (data === "toggle_internal_thickness") {
-    ctx.session.defaultInternalThickness = ctx.session.defaultInternalThickness === "18mm" ? "15mm" : "18mm";
-    await ctx.editMessageReplyMarkup({ reply_markup: buildConfigKeyboard(ctx.session) });
-    return ctx.answerCallbackQuery(`Interior → ${ctx.session.defaultInternalThickness}`);
+
+  if (data === "menu_frentes") {
+    await ctx.answerCallbackQuery();
+    return ctx.editMessageReplyMarkup({ reply_markup: buildConfigMenuFrentes(ctx.session) });
   }
-  if (data === "cycle_hardware_tier") {
-    const order: ("standard" | "premium" | "luxury")[] = ["standard", "premium", "luxury"];
-    ctx.session.defaultHardwareTier = order[(order.indexOf(ctx.session.defaultHardwareTier || "premium") + 1) % order.length];
-    await ctx.editMessageReplyMarkup({ reply_markup: buildConfigKeyboard(ctx.session) });
-    return ctx.answerCallbackQuery(`Herrajes → ${ctx.session.defaultHardwareTier}`);
+  if (data === "menu_interior") {
+    await ctx.answerCallbackQuery();
+    return ctx.editMessageReplyMarkup({ reply_markup: buildConfigMenuInterior(ctx.session) });
   }
+  if (data === "menu_herrajes") {
+      await ctx.answerCallbackQuery();
+      return ctx.editMessageReplyMarkup({ reply_markup: buildConfigMenuHerrajes(ctx.session) });
+  }
+
+  // --- SETTINGS APPLIERS ---
+  const applySettingAndGoBack = async (message: string) => {
+    // Si queremos recalcular el carrito retroactivamente, lo haríamos acá:
+    // ctx.session.modules = ctx.session.modules.map(mod => calculateQuote({ ...mod.request, frontMaterial: ctx.session.defaultFrontMaterial, ... }));
+    
+    await ctx.answerCallbackQuery(message);
+    await ctx.editMessageText("⚙️ *Configuración del Proyecto*\n\nAjustá los defaults de este cliente:", {
+      parse_mode: "Markdown",
+      reply_markup: buildConfigKeyboard(ctx.session)
+    });
+  };
+
+  if (data === "set_front_blanco") { ctx.session.defaultFrontMaterial = "blanco"; return applySettingAndGoBack("Frente Blanco asignado"); }
+  if (data === "set_front_color") { ctx.session.defaultFrontMaterial = "color"; return applySettingAndGoBack("Frente Color asignado"); }
+  if (data === "set_front_color_veta") { ctx.session.defaultFrontMaterial = "color_veta"; return applySettingAndGoBack("Frente Veta asignado"); }
+
+  if (data === "set_int_15_blanco") { ctx.session.defaultInternalThickness = "15mm"; return applySettingAndGoBack("Interior Económico"); }
+  if (data === "set_int_18_blanco") { ctx.session.defaultInternalThickness = "18mm"; return applySettingAndGoBack("Interior Estándar"); }
+  if (data === "set_int_18_color") { ctx.session.defaultInternalThickness = "18mm_color"; return applySettingAndGoBack("Interior Premium"); }
+
+  if (data === "set_hw_standard") { ctx.session.defaultHardwareTier = "standard"; return applySettingAndGoBack("Herrajes Zetas"); }
+  if (data === "set_hw_premium") { ctx.session.defaultHardwareTier = "premium"; return applySettingAndGoBack("Herrajes Telescópicas"); }
+  if (data === "set_hw_luxury") { ctx.session.defaultHardwareTier = "luxury"; return applySettingAndGoBack("Herrajes Ocultas"); }
 
   if (data.startsWith("delete_")) {
     const id = data.replace("delete_", "");
